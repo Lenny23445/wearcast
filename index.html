@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>WearCast</title>
+<meta name="description" content="Was ziehe ich heute an? Outfit-Empfehlungen passend zum Wetter.">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f2f6fc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1420" media="(prefers-color-scheme: dark)">
+<style>
+:root {
+  --bg: #f2f6fc;
+  --card: #ffffff;
+  --card2: #eaf1fa;
+  --text: #1b2533;
+  --muted: #67768c;
+  --accent: #3b82f6;
+  --accent-soft: #dbeafe;
+  --border: #dde6f2;
+  --good: #16a34a;
+  --warn: #d97706;
+  --shadow: 0 2px 12px rgba(27,37,51,.07);
+  --radius: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1420;
+    --card: #18202f;
+    --card2: #1f2a3d;
+    --text: #e8eef7;
+    --muted: #8fa0b8;
+    --accent: #60a5fa;
+    --accent-soft: #1e3a5f;
+    --border: #263246;
+    --shadow: 0 2px 12px rgba(0,0,0,.3);
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100%;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  -webkit-font-smoothing: antialiased;
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(14px + env(safe-area-inset-top)) 18px 10px;
+}
+header h1 { font-size: 22px; font-weight: 800; letter-spacing: -.3px; }
+header h1 span { color: var(--accent); }
+.loc-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 99px;
+  padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--text);
+  box-shadow: var(--shadow); cursor: pointer; max-width: 55%;
+}
+.loc-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+main { padding: 4px 16px 16px; max-width: 560px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; animation: fadein .25s ease; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--card); border-radius: var(--radius);
+  box-shadow: var(--shadow); border: 1px solid var(--border);
+  padding: 18px; margin-bottom: 14px;
+}
+
+/* Wetterkarte */
+.weather-now { display: flex; align-items: center; gap: 16px; }
+.weather-now .wicon { font-size: 52px; line-height: 1; }
+.weather-now .temp { font-size: 40px; font-weight: 800; letter-spacing: -1px; }
+.weather-now .desc { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.weather-meta { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.chip {
+  background: var(--card2); border-radius: 99px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+.chip b { font-weight: 700; }
+
+/* Outfit-Empfehlung */
+.outfit-title { font-size: 15px; font-weight: 700; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; font-size: 12px; }
+.outfit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.outfit-item {
+  background: var(--card2); border-radius: 14px; padding: 14px 8px;
+  text-align: center;
+}
+.outfit-item .emoji { font-size: 36px; display: block; margin-bottom: 6px; }
+.outfit-item .label { font-size: 13px; font-weight: 700; }
+.outfit-item .cat { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
+.hints { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.hint {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13.5px; color: var(--text);
+  background: var(--accent-soft); border-radius: 12px; padding: 10px 12px;
+}
+.learn-note { margin-top: 12px; font-size: 13px; color: var(--muted); text-align: center; }
+
+.big-btn {
+  display: block; width: 100%; border: none; border-radius: 16px;
+  background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
+  padding: 16px; cursor: pointer; box-shadow: var(--shadow);
+  font-family: inherit;
+}
+.big-btn:active { transform: scale(.98); }
+.big-btn.done { background: var(--good); }
+
+/* Woche */
+.day-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.day-row + .day-row { border-top: 1px solid var(--border); }
+.day-row .dname { width: 44px; font-weight: 800; font-size: 15px; }
+.day-row .dname small { display: block; font-weight: 600; color: var(--muted); font-size: 11px; }
+.day-row .dicon { font-size: 26px; }
+.day-row .dtemp { font-size: 14px; min-width: 76px; }
+.day-row .dtemp b { font-size: 15px; }
+.day-row .dtemp small { color: var(--muted); }
+.day-row .dwind { font-size: 11.5px; color: var(--muted); }
+.day-row .doutfit { margin-left: auto; font-size: 21px; letter-spacing: 2px; white-space: nowrap; }
+.card.tight { padding: 0; overflow: hidden; }
+
+/* Verlauf */
+.log-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.log-row + .log-row { border-top: 1px solid var(--border); }
+.log-row .ldate { font-weight: 700; font-size: 14px; width: 64px; }
+.log-row .ldate small { display: block; color: var(--muted); font-weight: 600; font-size: 11px; }
+.log-row .lout { font-size: 20px; letter-spacing: 2px; }
+.log-row .lrating { margin-left: auto; font-size: 22px; }
+.log-row .ldel {
+  background: none; border: none; color: var(--muted); font-size: 18px;
+  padding: 6px; cursor: pointer; font-family: inherit;
+}
+.profile-text { font-size: 14.5px; line-height: 1.5; }
+.profile-text b { color: var(--accent); }
+.empty { text-align: center; color: var(--muted); padding: 30px 16px; font-size: 14.5px; line-height: 1.5; }
+.empty .big { font-size: 40px; display: block; margin-bottom: 10px; }
+
+/* Tabbar */
+nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--card); border-top: 1px solid var(--border);
+  display: flex; padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+nav button {
+  flex: 1; background: none; border: none; padding: 10px 0 8px;
+  font-size: 11px; font-weight: 700; color: var(--muted); cursor: pointer;
+  font-family: inherit;
+}
+nav button .ico { display: block; font-size: 22px; margin-bottom: 2px; }
+nav button.active { color: var(--accent); }
+
+/* Sheets / Modals */
+.sheet-bg {
+  position: fixed; inset: 0; background: rgba(10,15,25,.45);
+  z-index: 20; display: none; align-items: flex-end; justify-content: center;
+}
+.sheet-bg.open { display: flex; }
+.sheet {
+  background: var(--bg); width: 100%; max-width: 560px;
+  border-radius: 22px 22px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  max-height: 88vh; overflow-y: auto;
+  animation: slideup .25s ease;
+}
+@keyframes slideup { from { transform: translateY(40px); opacity: .5; } to { transform: none; opacity: 1; } }
+.sheet h2 { font-size: 19px; margin-bottom: 4px; }
+.sheet .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
+.seg-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 8px; }
+.seg { display: grid; gap: 8px; }
+.seg.c3 { grid-template-columns: repeat(3, 1fr); }
+.seg.c2 { grid-template-columns: repeat(2, 1fr); }
+.seg.c4 { grid-template-columns: repeat(2, 1fr); }
+.seg button {
+  background: var(--card); border: 2px solid var(--border); border-radius: 14px;
+  padding: 12px 6px; font-size: 13px; font-weight: 700; color: var(--text);
+  cursor: pointer; font-family: inherit;
+}
+.seg button .e { display: block; font-size: 26px; margin-bottom: 4px; }
+.seg button.sel { border-color: var(--accent); background: var(--accent-soft); }
+.rating-row { display: flex; gap: 8px; }
+.rating-row button {
+  flex: 1; background: var(--card); border: 2px solid var(--border); border-radius: 14px;
+  font-size: 26px; padding: 10px 0 6px; cursor: pointer;
+}
+.rating-row button small { display: block; font-size: 9.5px; font-weight: 700; color: var(--muted); margin-top: 2px; font-family: inherit; }
+.rating-row button.sel { border-color: var(--accent); background: var(--accent-soft); }
+.sheet .big-btn { margin-top: 20px; }
+
+/* Ortssuche */
+.search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.search-row input {
+  flex: 1; border: 2px solid var(--border); border-radius: 14px;
+  background: var(--card); color: var(--text);
+  padding: 13px 14px; font-size: 16px; font-family: inherit; outline: none;
+}
+.search-row input:focus { border-color: var(--accent); }
+.gps-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; background: var(--card); border: 2px solid var(--border);
+  border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 700;
+  color: var(--text); cursor: pointer; margin-bottom: 6px; font-family: inherit;
+}
+.geo-result {
+  width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px; font-size: 15px; font-weight: 600;
+  color: var(--text); cursor: pointer; margin-top: 8px; font-family: inherit;
+}
+.geo-result small { display: block; color: var(--muted); font-weight: 500; font-size: 12.5px; }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(90px + env(safe-area-inset-bottom));
+  background: var(--text); color: var(--bg);
+  border-radius: 99px; padding: 10px 18px; font-size: 14px; font-weight: 600;
+  z-index: 40; opacity: 0; transition: opacity .25s; pointer-events: none;
+  max-width: 88%; text-align: center;
+}
+.toast.show { opacity: 1; }
+.offline-note { font-size: 12.5px; color: var(--warn); text-align: center; margin: -6px 0 12px; }
+.skeleton { color: var(--muted); text-align: center; padding: 40px 0; font-size: 14.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Wear<span>Cast</span></h1>
+  <button class="loc-btn" id="locBtn" onclick="openLocSheet()">📍 <span id="locName">Ort wählen</span></button>
+</header>
+
+<main>
+  <div id="offlineNote" class="offline-note" style="display:none"></div>
+
+  <!-- HEUTE -->
+  <section class="view active" id="view-today">
+    <div id="todayContent"><div class="skeleton">Wetter wird geladen …</div></div>
+  </section>
+
+  <!-- WOCHE -->
+  <section class="view" id="view-week">
+    <div id="weekContent"><div class="skeleton">Wetter wird geladen …</div></div>
+  </section>
+
+  <!-- VERLAUF -->
+  <section class="view" id="view-history">
+    <div id="historyContent"></div>
+  </section>
+</main>
+
+<nav>
+  <button class="active" data-view="today" onclick="switchView('today')"><span class="ico">☀️</span>Heute</button>
+  <button data-view="week" onclick="switchView('week')"><span class="ico">📅</span>Woche</button>
+  <button data-view="history" onclick="switchView('history')"><span class="ico">📒</span>Verlauf</button>
+</nav>
+
+<!-- Eintrag-Sheet -->
+<div class="sheet-bg" id="entrySheetBg" onclick="if(event.target===this)closeEntrySheet()">
+  <div class="sheet">
+    <h2>Was hattest du heute an?</h2>
+    <p class="sub">Trag dein Outfit ein und sag, wie es sich angefühlt hat — so lernt WearCast dein Kälteempfinden.</p>
+    <div class="seg-label">Oberteil</div>
+    <div class="seg c3" id="segTop"></div>
+    <div class="seg-label">Hose</div>
+    <div class="seg c2" id="segBottom"></div>
+    <div class="seg-label">Jacke</div>
+    <div class="seg c4" id="segJacket"></div>
+    <div class="seg-label">Wie war das so?</div>
+    <div class="rating-row" id="segRating"></div>
+    <button class="big-btn" onclick="saveEntry()">Speichern</button>
+  </div>
+</div>
+
+<!-- Orts-Sheet -->
+<div class="sheet-bg" id="locSheetBg" onclick="if(event.target===this)closeLocSheet()">
+  <div class="sheet">
+    <h2>Standort</h2>
+    <p class="sub">Wofür soll das Wetter angezeigt werden?</p>
+    <button class="gps-btn" onclick="useGPS()">📍 Meinen Standort verwenden</button>
+    <div class="search-row">
+      <input id="locSearch" type="text" placeholder="Ort suchen, z. B. Berlin" autocomplete="off">
+    </div>
+    <div id="locResults"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ───────────────────────── Konstanten ───────────────────────── */
+const TOPS    = [ { e:'👕', l:'T-Shirt' }, { e:'👚', l:'Langarmshirt' }, { e:'🧶', l:'Pullover' } ];
+const BOTTOMS = [ { e:'🩳', l:'kurze Hose' }, { e:'👖', l:'lange Hose' } ];
+const JACKETS = [ { e:'🚫', l:'Keine Jacke' }, { e:'🧣', l:'Strickjacke' }, { e:'🧥', l:'Übergangsjacke' }, { e:'❄️', l:'Winterjacke' } ];
+const RATINGS = [
+  { v:-2, e:'🥶', l:'viel zu kalt' },
+  { v:-1, e:'❄️', l:'etwas kalt' },
+  { v: 0, e:'👌', l:'genau richtig' },
+  { v: 1, e:'😅', l:'etwas warm' },
+  { v: 2, e:'🥵', l:'viel zu warm' },
+];
+const W_TOP = 1.0, W_BOTTOM = 0.8, W_JACKET = 1.5;
+const MIN_LOGS_FOR_LEARNING = 3;
+
+const WMO = {
+  0:['☀️','Klarer Himmel'], 1:['🌤️','Überwiegend sonnig'], 2:['⛅','Teils bewölkt'], 3:['☁️','Bedeckt'],
+  45:['🌫️','Nebel'], 48:['🌫️','Reifnebel'],
+  51:['🌦️','Leichter Niesel'], 53:['🌦️','Niesel'], 55:['🌧️','Starker Niesel'],
+  56:['🌧️','Gefrierender Niesel'], 57:['🌧️','Gefrierender Niesel'],
+  61:['🌧️','Leichter Regen'], 63:['🌧️','Regen'], 65:['🌧️','Starker Regen'],
+  66:['🌧️','Gefrierender Regen'], 67:['🌧️','Gefrierender Regen'],
+  71:['🌨️','Leichter Schneefall'], 73:['🌨️','Schneefall'], 75:['❄️','Starker Schneefall'], 77:['🌨️','Schneegriesel'],
+  80:['🌦️','Leichte Schauer'], 81:['🌧️','Schauer'], 82:['⛈️','Starke Schauer'],
+  85:['🌨️','Schneeschauer'], 86:['🌨️','Schneeschauer'],
+  95:['⛈️','Gewitter'], 96:['⛈️','Gewitter mit Hagel'], 99:['⛈️','Gewitter mit Hagel'],
+};
+const wmo = c => WMO[c] || ['🌡️','—'];
+
+/* ───────────────────────── State ───────────────────────── */
+let location_ = loadLS('wearcast_location', null);
+let logs      = loadLS('wearcast_logs', []);
+let weather   = null;          // verarbeitete Wetterdaten
+let entrySel  = { top:0, bottom:1, jacket:0, rating:0 };
+
+function loadLS(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
+function saveLS(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+function todayStr() { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+/* ───────────────────────── Wetter ───────────────────────── */
+async function fetchWeather(force = false) {
+  if (!location_) return;
+  const cache = loadLS('wearcast_weather', null);
+  if (!force && cache && cache.lat === location_.lat && cache.lon === location_.lon
+      && Date.now() - cache.fetchedAt < 60*60*1000) {
+    weather = cache;
+    renderAll();
+    return;
+  }
+  const url = 'https://api.open-meteo.com/v1/forecast'
+    + '?latitude=' + location_.lat + '&longitude=' + location_.lon
+    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,wind_speed_10m_max,precipitation_probability_max'
+    + '&hourly=apparent_temperature'
+    + '&current=temperature_2m,apparent_temperature,wind_speed_10m,weather_code'
+    + '&timezone=auto&forecast_days=7';
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const days = d.daily.time.map((date, i) => {
+      // Gefühlte Tagestemperatur: Mittel der gefühlten Temperatur 8–20 Uhr
+      const hrs = d.hourly.apparent_temperature.slice(i*24 + 8, i*24 + 21).filter(v => v != null);
+      const felt = hrs.length ? hrs.reduce((a,b) => a+b, 0) / hrs.length
+                              : (d.daily.apparent_temperature_max[i] + d.daily.apparent_temperature_min[i]) / 2;
+      return {
+        date,
+        code: d.daily.weather_code[i],
+        tmax: d.daily.temperature_2m_max[i],
+        tmin: d.daily.temperature_2m_min[i],
+        feltMax: d.daily.apparent_temperature_max[i],
+        feltMin: d.daily.apparent_temperature_min[i],
+        wind: d.daily.wind_speed_10m_max[i],
+        rain: d.daily.precipitation_probability_max[i] ?? 0,
+        felt: Math.round(felt * 10) / 10,
+      };
+    });
+    weather = {
+      fetchedAt: Date.now(), lat: location_.lat, lon: location_.lon,
+      current: d.current, days,
+    };
+    saveLS('wearcast_weather', weather);
+    document.getElementById('offlineNote').style.display = 'none';
+    renderAll();
+  } catch (err) {
+    if (cache) {
+      weather = cache;
+      const mins = Math.round((Date.now() - cache.fetchedAt) / 60000);
+      const note = document.getElementById('offlineNote');
+      note.textContent = '⚠️ Keine Verbindung — Wetterdaten von vor ' + (mins < 60 ? mins + ' Min.' : Math.round(mins/60) + ' Std.');
+      note.style.display = 'block';
+      renderAll();
+    } else {
+      document.getElementById('todayContent').innerHTML =
+        '<div class="empty"><span class="big">📡</span>Wetter konnte nicht geladen werden.<br>Bitte Internetverbindung prüfen.</div>';
+      document.getElementById('weekContent').innerHTML = '';
+    }
+  }
+}
+
+/* ───────────────────────── Empfehlungs-Engine ───────────────────────── */
+function warmthScore(top, bottom, jacket) {
+  return top * W_TOP + bottom * W_BOTTOM + jacket * W_JACKET;
+}
+
+// Basis: gefühlte Temperatur → idealer Wärmescore (linear interpoliert)
+const BASE_ANCHORS = [ [-12, 7.3], [0, 7.3], [5, 5.8], [11, 4.8], [16.5, 3.3], [21, 0.8], [24, 0.3], [28, 0], [45, 0] ];
+function baseScore(felt) {
+  const a = BASE_ANCHORS;
+  if (felt <= a[0][0]) return a[0][1];
+  if (felt >= a[a.length-1][0]) return a[a.length-1][1];
+  for (let i = 0; i < a.length - 1; i++) {
+    if (felt >= a[i][0] && felt <= a[i+1][0]) {
+      const t = (felt - a[i][0]) / (a[i+1][0] - a[i][0]);
+      return a[i][1] + t * (a[i+1][1] - a[i][1]);
+    }
+  }
+  return 0;
+}
+
+// Persönlicher Offset aus den Einträgen (exponentiell gewichtet, neuere zählen mehr)
+function personalOffset() {
+  const valid = logs.filter(l => l.feltTemp != null);
+  if (valid.length < MIN_LOGS_FOR_LEARNING) return 0;
+  const now = new Date(todayStr());
+  let sumW = 0, sum = 0;
+  for (const l of valid) {
+    const age = Math.max(0, (now - new Date(l.date)) / 86400000);
+    const w = Math.pow(0.85, age);
+    const ideal = warmthScore(l.top, l.bottom, l.jacket) - l.rating * 0.7;
+    const delta = ideal - baseScore(l.feltTemp);
+    sum += w * delta; sumW += w;
+  }
+  if (!sumW) return 0;
+  return Math.max(-2.5, Math.min(2.5, sum / sumW));
+}
+
+// Outfit-Leiter: nur sinnvolle Kombinationen, aufsteigend nach Wärme.
+// Es wird die Stufe gewählt, deren Wärmescore dem Zielscore am nächsten liegt.
+const OUTFIT_LADDER = [
+  { top:0, bottom:0, jacket:0 },  // 0    T-Shirt, kurz
+  { top:0, bottom:1, jacket:0 },  // 0.8  T-Shirt, lang
+  { top:1, bottom:1, jacket:0 },  // 1.8  Langarm, lang
+  { top:1, bottom:1, jacket:1 },  // 3.3  + Strickjacke
+  { top:1, bottom:1, jacket:2 },  // 4.8  Langarm + Übergangsjacke
+  { top:2, bottom:1, jacket:2 },  // 5.8  Pullover + Übergangsjacke
+  { top:2, bottom:1, jacket:3 },  // 7.3  Pullover + Winterjacke
+];
+function recommendOutfit(day) {
+  const target = baseScore(day.felt) + personalOffset();
+  let best = OUTFIT_LADDER[0], bestDist = Infinity;
+  for (const o of OUTFIT_LADDER) {
+    const d = Math.abs(warmthScore(o.top, o.bottom, o.jacket) - target);
+    if (d < bestDist) { bestDist = d; best = o; }
+  }
+  best = { ...best };
+  // Regenregel: Strickjacke schützt nicht vor Regen
+  if (day.rain > 50 && best.jacket === 1) best.jacket = 2;
+  return best;
+}
+
+function dayHints(day) {
+  const h = [];
+  if (day.wind > 25 && day.felt < 20) h.push(['💨', 'Ziemlich windig (' + Math.round(day.wind) + ' km/h) — gefühlt kälter, lieber eine Schicht mehr dabei haben.']);
+  if (day.rain > 50) h.push(['☔', 'Regenwahrscheinlichkeit ' + Math.round(day.rain) + ' % — Regenjacke oder Schirm mitnehmen.']);
+  if (day.feltMax - day.feltMin > 10) h.push(['🧅', 'Morgens deutlich kühler als mittags — Zwiebel-Look: was zum Ausziehen anziehen.']);
+  return h;
+}
+
+/* ───────────────────────── Rendering ───────────────────────── */
+function renderAll() { renderToday(); renderWeek(); renderHistory(); }
+
+function outfitEmojis(o) { return TOPS[o.top].e + ' ' + BOTTOMS[o.bottom].e + (o.jacket > 0 ? ' ' + JACKETS[o.jacket].e : ''); }
+
+function renderToday() {
+  const el = document.getElementById('todayContent');
+  if (!weather) return;
+  const day = weather.days[0];
+  const cur = weather.current;
+  const rec = recommendOutfit(day);
+  const hints = dayHints(day);
+  const off = personalOffset();
+  const nValid = logs.filter(l => l.feltTemp != null).length;
+  const hasEntry = logs.some(l => l.date === todayStr());
+  const [ico, desc] = wmo(cur.weather_code);
+
+  let learnNote;
+  if (nValid < MIN_LOGS_FOR_LEARNING) {
+    learnNote = 'Noch ' + (MIN_LOGS_FOR_LEARNING - nValid) + ' Einträge, dann werden die Empfehlungen persönlich auf dich abgestimmt. ✨';
+  } else if (off > 0.4) {
+    learnNote = 'Auf dich abgestimmt: Du magst es gern etwas wärmer. 🤗';
+  } else if (off < -0.4) {
+    learnNote = 'Auf dich abgestimmt: Dir ist schnell zu warm — Empfehlungen sind etwas luftiger. 😎';
+  } else {
+    learnNote = 'Auf dich abgestimmt — dein Empfinden ist ziemlich ausgewogen. 👌';
+  }
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="weather-now">
+        <div class="wicon">${ico}</div>
+        <div>
+          <div class="temp">${Math.round(cur.temperature_2m)}°</div>
+          <div class="desc">${desc} · Tag ${Math.round(day.tmin)}° – ${Math.round(day.tmax)}°</div>
+        </div>
+      </div>
+      <div class="weather-meta">
+        <span class="chip">🌡️ Gefühlt <b>${Math.round(day.felt)}°</b></span>
+        <span class="chip">💨 Wind <b>${Math.round(day.wind)} km/h</b></span>
+        <span class="chip">☔ Regen <b>${Math.round(day.rain)} %</b></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="outfit-title">Heute anziehen</div>
+      <div class="outfit-grid">
+        <div class="outfit-item"><span class="cat">Oberteil</span><span class="emoji">${TOPS[rec.top].e}</span><span class="label">${TOPS[rec.top].l}</span></div>
+        <div class="outfit-item"><span class="cat">Hose</span><span class="emoji">${BOTTOMS[rec.bottom].e}</span><span class="label">${BOTTOMS[rec.bottom].l}</span></div>
+        <div class="outfit-item"><span class="cat">Jacke</span><span class="emoji">${JACKETS[rec.jacket].e}</span><span class="label">${JACKETS[rec.jacket].l}</span></div>
+      </div>
+      ${hints.length ? '<div class="hints">' + hints.map(h => `<div class="hint"><span>${h[0]}</span><span>${h[1]}</span></div>`).join('') + '</div>' : ''}
+      <div class="learn-note">${learnNote}</div>
+    </div>
+    <button class="big-btn ${hasEntry ? 'done' : ''}" onclick="openEntrySheet()">
+      ${hasEntry ? '✓ Eintrag für heute bearbeiten' : 'Was hattest du heute an?'}
+    </button>`;
+}
+
+const DAYNAMES = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+function renderWeek() {
+  const el = document.getElementById('weekContent');
+  if (!weather) return;
+  const rows = weather.days.map((day, i) => {
+    const rec = recommendOutfit(day);
+    const [ico] = wmo(day.code);
+    const d = new Date(day.date + 'T12:00:00');
+    const name = i === 0 ? 'Heute' : DAYNAMES[d.getDay()];
+    const dm = d.getDate() + '.' + (d.getMonth()+1) + '.';
+    return `<div class="day-row">
+      <div class="dname">${name}<small>${dm}</small></div>
+      <div class="dicon">${ico}</div>
+      <div class="dtemp"><b>${Math.round(day.tmax)}°</b> <small>/ ${Math.round(day.tmin)}°</small>
+        <div class="dwind">💨 ${Math.round(day.wind)} km/h</div></div>
+      <div class="doutfit" title="${TOPS[rec.top].l}, ${BOTTOMS[rec.bottom].l}, ${JACKETS[rec.jacket].l}">${outfitEmojis(rec)}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = '<div class="card tight">' + rows + '</div>'
+    + '<div class="learn-note">Empfehlungen basieren auf der gefühlten Temperatur (inkl. Wind)'
+    + (logs.filter(l => l.feltTemp != null).length >= MIN_LOGS_FOR_LEARNING ? ' und deinem persönlichen Empfinden.' : '.') + '</div>';
+}
+
+function renderHistory() {
+  const el = document.getElementById('historyContent');
+  const valid = logs.filter(l => l.feltTemp != null);
+  let profile = '';
+  if (valid.length >= MIN_LOGS_FOR_LEARNING) {
+    const off = personalOffset();
+    let txt;
+    if (off > 1.2)       txt = 'Dir ist <b>deutlich schneller kalt</b> als dem Durchschnitt. WearCast empfiehlt dir darum wärmere Outfits.';
+    else if (off > 0.4)  txt = 'Du magst es <b>etwas wärmer</b> als der Durchschnitt. Die Empfehlungen sind entsprechend angepasst.';
+    else if (off < -1.2) txt = 'Dir wird <b>deutlich schneller warm</b> als dem Durchschnitt. WearCast empfiehlt dir darum luftigere Outfits.';
+    else if (off < -0.4) txt = 'Du magst es <b>etwas kühler</b> als der Durchschnitt. Die Empfehlungen sind entsprechend angepasst.';
+    else                 txt = 'Dein Temperaturempfinden ist <b>ziemlich durchschnittlich</b> — die Standard-Empfehlungen passen gut zu dir.';
+    profile = `<div class="card"><div class="outfit-title">Dein Profil</div>
+      <p class="profile-text">${txt}</p>
+      <p class="profile-text" style="margin-top:8px;color:var(--muted);font-size:13px">Basierend auf ${valid.length} Einträgen.</p></div>`;
+  }
+  if (!logs.length) {
+    el.innerHTML = profile + `<div class="empty"><span class="big">📒</span>Noch keine Einträge.<br>Trag jeden Abend kurz ein, was du anhattest und wie es sich angefühlt hat — WearCast lernt daraus.</div>`;
+    return;
+  }
+  const sorted = [...logs].sort((a,b) => b.date.localeCompare(a.date));
+  const rows = sorted.map(l => {
+    const d = new Date(l.date + 'T12:00:00');
+    const r = RATINGS.find(r => r.v === l.rating);
+    return `<div class="log-row">
+      <div class="ldate">${DAYNAMES[d.getDay()]} ${d.getDate()}.${d.getMonth()+1}.<small>${l.feltTemp != null ? 'gefühlt ' + Math.round(l.feltTemp) + '°' : ''}</small></div>
+      <div class="lout">${outfitEmojis(l)}</div>
+      <div class="lrating" title="${r ? r.l : ''}">${r ? r.e : ''}</div>
+      <button class="ldel" onclick="deleteLog('${l.date}')">🗑️</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = profile + '<div class="card tight">' + rows + '</div>';
+}
+
+/* ───────────────────────── Eintrag ───────────────────────── */
+const SEGS = {
+  segTop:    { items: TOPS,    key: 'top' },
+  segBottom: { items: BOTTOMS, key: 'bottom' },
+  segJacket: { items: JACKETS, key: 'jacket' },
+  segRating: { items: RATINGS, key: 'rating' },
+};
+function buildSeg(containerId) {
+  const { items, key } = SEGS[containerId];
+  const el = document.getElementById(containerId);
+  el.innerHTML = items.map((it, i) => {
+    const val = it.v !== undefined ? it.v : i;
+    return `<button class="${entrySel[key] === val ? 'sel' : ''}" onclick="selSeg('${containerId}',${val})">
+       <span class="${key === 'rating' ? '' : 'e'}">${it.e}</span>${key === 'rating' ? '<small>' + it.l + '</small>' : it.l}
+     </button>`;
+  }).join('');
+}
+function selSeg(containerId, val) {
+  entrySel[SEGS[containerId].key] = val;
+  buildSeg(containerId);
+}
+
+function openEntrySheet() {
+  const existing = logs.find(l => l.date === todayStr());
+  if (existing) {
+    entrySel = { top: existing.top, bottom: existing.bottom, jacket: existing.jacket, rating: existing.rating };
+  } else if (weather) {
+    const rec = recommendOutfit(weather.days[0]);
+    entrySel = { top: rec.top, bottom: rec.bottom, jacket: rec.jacket, rating: 0 };
+  }
+  buildSeg('segTop');
+  buildSeg('segBottom');
+  buildSeg('segJacket');
+  buildSeg('segRating');
+  document.getElementById('entrySheetBg').classList.add('open');
+}
+function closeEntrySheet() { document.getElementById('entrySheetBg').classList.remove('open'); }
+
+function saveEntry() {
+  const date = todayStr();
+  const feltTemp = weather ? weather.days[0].felt : null;
+  logs = logs.filter(l => l.date !== date);
+  logs.push({ date, top: entrySel.top, bottom: entrySel.bottom, jacket: entrySel.jacket, rating: entrySel.rating, feltTemp });
+  saveLS('wearcast_logs', logs);
+  closeEntrySheet();
+  renderAll();
+  toast('Gespeichert! WearCast lernt mit. ✨');
+}
+
+function deleteLog(date) {
+  logs = logs.filter(l => l.date !== date);
+  saveLS('wearcast_logs', logs);
+  renderAll();
+}
+
+/* ───────────────────────── Standort ───────────────────────── */
+function openLocSheet() {
+  document.getElementById('locSheetBg').classList.add('open');
+  document.getElementById('locResults').innerHTML = '';
+  document.getElementById('locSearch').value = '';
+}
+function closeLocSheet() { document.getElementById('locSheetBg').classList.remove('open'); }
+
+function setLocation(name, lat, lon) {
+  location_ = { name, lat: Math.round(lat*1000)/1000, lon: Math.round(lon*1000)/1000 };
+  saveLS('wearcast_location', location_);
+  document.getElementById('locName').textContent = name;
+  closeLocSheet();
+  document.getElementById('todayContent').innerHTML = '<div class="skeleton">Wetter wird geladen …</div>';
+  document.getElementById('weekContent').innerHTML = '<div class="skeleton">Wetter wird geladen …</div>';
+  fetchWeather(true);
+}
+
+function useGPS() {
+  if (!navigator.geolocation) { toast('GPS wird nicht unterstützt'); return; }
+  toast('Standort wird ermittelt …');
+  navigator.geolocation.getCurrentPosition(
+    pos => setLocation('Mein Standort', pos.coords.latitude, pos.coords.longitude),
+    () => toast('Standort nicht verfügbar — bitte Ort suchen'),
+    { timeout: 10000 }
+  );
+}
+
+let searchTimer = null;
+document.getElementById('locSearch').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { document.getElementById('locResults').innerHTML = ''; return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=5&language=de&format=json');
+      const d = await r.json();
+      const res = d.results || [];
+      document.getElementById('locResults').innerHTML = res.length
+        ? res.map(p => `<button class="geo-result" onclick="setLocation('${(p.name||'').replace(/'/g,'’')}', ${p.latitude}, ${p.longitude})">
+            ${p.name}<small>${[p.admin1, p.country].filter(Boolean).join(', ')}</small></button>`).join('')
+        : '<div class="empty">Kein Ort gefunden.</div>';
+    } catch { document.getElementById('locResults').innerHTML = '<div class="empty">Suche fehlgeschlagen.</div>'; }
+  }, 350);
+});
+
+/* ───────────────────────── Navigation ───────────────────────── */
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/* ───────────────────────── Init ───────────────────────── */
+renderHistory();
+if (location_) {
+  document.getElementById('locName').textContent = location_.name;
+  fetchWeather();
+} else {
+  document.getElementById('todayContent').innerHTML =
+    '<div class="empty"><span class="big">👋</span>Willkommen bei WearCast!<br>Wähle zuerst oben rechts deinen Ort,<br>dann gibt’s die erste Outfit-Empfehlung.</div>';
+  document.getElementById('weekContent').innerHTML = '';
+  setTimeout(openLocSheet, 600);
+}
+
+/* ── Service Worker (Auto-Update wie GymTrack) ── */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) {
+          w.postMessage({ type: 'SKIP_WAITING' });
+          location.reload();
+        }
+      });
+    });
+  });
+}
+</script>
+</body>
+</html>
