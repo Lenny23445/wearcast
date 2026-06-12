@@ -288,6 +288,20 @@ nav button.active { color: var(--accent); }
   </div>
 </div>
 
+<!-- Sync-Verbinden-Sheet -->
+<div class="sheet-bg" id="syncSheetBg" onclick="if(event.target===this)closeSyncSheet()">
+  <div class="sheet">
+    <h2>Mit Code verbinden</h2>
+    <p class="sub">Gib den Sync-Code vom anderen Gerät ein. Die Einträge beider Geräte werden zusammengeführt.</p>
+    <div class="search-row">
+      <input id="syncCodeInput" type="text" placeholder="xxxx-xxxx-xxxx" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <button class="big-btn" onclick="connectSync()">Verbinden</button>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".json,application/json" style="display:none">
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -322,8 +336,13 @@ const wmo = c => WMO[c] || ['🌡️','—'];
 /* ───────────────────────── State ───────────────────────── */
 let location_ = loadLS('wearcast_location', null);
 let logs      = loadLS('wearcast_logs', []);
+let sync      = loadLS('wearcast_sync', null);   // {code, lastSync}
 let weather   = null;          // verarbeitete Wetterdaten
 let entrySel  = { top:0, bottom:1, jacket:0, rating:0 };
+
+// Gelöschte Einträge bleiben als Tombstone ({deleted:true}) erhalten,
+// damit sie beim Sync nicht von anderen Geräten "wiederbelebt" werden.
+const activeLogs = () => logs.filter(l => !l.deleted);
 
 function loadLS(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function saveLS(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
@@ -411,7 +430,7 @@ function baseScore(felt) {
 
 // Persönlicher Offset aus den Einträgen (exponentiell gewichtet, neuere zählen mehr)
 function personalOffset() {
-  const valid = logs.filter(l => l.feltTemp != null);
+  const valid = activeLogs().filter(l => l.feltTemp != null);
   if (valid.length < MIN_LOGS_FOR_LEARNING) return 0;
   const now = new Date(todayStr());
   let sumW = 0, sum = 0;
@@ -471,8 +490,8 @@ function renderToday() {
   const rec = recommendOutfit(day);
   const hints = dayHints(day);
   const off = personalOffset();
-  const nValid = logs.filter(l => l.feltTemp != null).length;
-  const hasEntry = logs.some(l => l.date === todayStr());
+  const nValid = activeLogs().filter(l => l.feltTemp != null).length;
+  const hasEntry = activeLogs().some(l => l.date === todayStr());
   const [ico, desc] = wmo(cur.weather_code);
 
   let learnNote;
@@ -536,12 +555,34 @@ function renderWeek() {
   }).join('');
   el.innerHTML = '<div class="card tight">' + rows + '</div>'
     + '<div class="learn-note">Empfehlungen basieren auf der gefühlten Temperatur (inkl. Wind)'
-    + (logs.filter(l => l.feltTemp != null).length >= MIN_LOGS_FOR_LEARNING ? ' und deinem persönlichen Empfinden.' : '.') + '</div>';
+    + (activeLogs().filter(l => l.feltTemp != null).length >= MIN_LOGS_FOR_LEARNING ? ' und deinem persönlichen Empfinden.' : '.') + '</div>';
+}
+
+function syncCard() {
+  let body;
+  if (sync) {
+    const last = sync.lastSync ? new Date(sync.lastSync).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+    body = `<p class="profile-text">Sync ist <b>aktiv</b>. Gib diesen Code auf dem anderen Gerät unter „Mit Code verbinden" ein:</p>
+      <button class="gps-btn" style="margin-top:10px;letter-spacing:1px;font-size:17px" onclick="copySyncCode()">${sync.code} 📋</button>
+      <p class="profile-text" style="color:var(--muted);font-size:12.5px;margin-top:6px">Letzter Abgleich: ${last}</p>
+      <button class="gps-btn" onclick="disableSync()" style="margin-top:10px">Sync trennen</button>`;
+  } else {
+    body = `<p class="profile-text">Sichere deine Einträge in der Cloud und nutze sie auf mehreren Geräten — ganz ohne Account, nur mit einem geheimen Code.</p>
+      <button class="gps-btn" style="margin-top:12px" onclick="enableSync()">☁️ Sync einschalten</button>
+      <button class="gps-btn" onclick="openSyncSheet()">🔗 Mit Code verbinden</button>`;
+  }
+  return `<div class="card"><div class="outfit-title">Cloud-Sync</div>${body}</div>
+    <div class="card"><div class="outfit-title">Backup</div>
+      <p class="profile-text">Deine Daten als Datei sichern oder ein Backup wiederherstellen.</p>
+      <button class="gps-btn" style="margin-top:12px" onclick="exportData()">⬇️ Daten exportieren</button>
+      <button class="gps-btn" onclick="document.getElementById('importFile').click()">⬆️ Daten importieren</button>
+    </div>`;
 }
 
 function renderHistory() {
   const el = document.getElementById('historyContent');
-  const valid = logs.filter(l => l.feltTemp != null);
+  const visible = activeLogs();
+  const valid = visible.filter(l => l.feltTemp != null);
   let profile = '';
   if (valid.length >= MIN_LOGS_FOR_LEARNING) {
     const off = personalOffset();
@@ -555,11 +596,11 @@ function renderHistory() {
       <p class="profile-text">${txt}</p>
       <p class="profile-text" style="margin-top:8px;color:var(--muted);font-size:13px">Basierend auf ${valid.length} Einträgen.</p></div>`;
   }
-  if (!logs.length) {
-    el.innerHTML = profile + `<div class="empty"><span class="big">📒</span>Noch keine Einträge.<br>Trag jeden Abend kurz ein, was du anhattest und wie es sich angefühlt hat — WearCast lernt daraus.</div>`;
+  if (!visible.length) {
+    el.innerHTML = profile + `<div class="empty"><span class="big">📒</span>Noch keine Einträge.<br>Trag jeden Abend kurz ein, was du anhattest und wie es sich angefühlt hat — WearCast lernt daraus.</div>` + syncCard();
     return;
   }
-  const sorted = [...logs].sort((a,b) => b.date.localeCompare(a.date));
+  const sorted = [...visible].sort((a,b) => b.date.localeCompare(a.date));
   const rows = sorted.map(l => {
     const d = new Date(l.date + 'T12:00:00');
     const r = RATINGS.find(r => r.v === l.rating);
@@ -570,7 +611,7 @@ function renderHistory() {
       <button class="ldel" onclick="deleteLog('${l.date}')">🗑️</button>
     </div>`;
   }).join('');
-  el.innerHTML = profile + '<div class="card tight">' + rows + '</div>';
+  el.innerHTML = profile + '<div class="card tight">' + rows + '</div>' + syncCard();
 }
 
 /* ───────────────────────── Eintrag ───────────────────────── */
@@ -596,7 +637,7 @@ function selSeg(containerId, val) {
 }
 
 function openEntrySheet() {
-  const existing = logs.find(l => l.date === todayStr());
+  const existing = activeLogs().find(l => l.date === todayStr());
   if (existing) {
     entrySel = { top: existing.top, bottom: existing.bottom, jacket: existing.jacket, rating: existing.rating };
   } else if (weather) {
@@ -615,17 +656,20 @@ function saveEntry() {
   const date = todayStr();
   const feltTemp = weather ? weather.days[0].felt : null;
   logs = logs.filter(l => l.date !== date);
-  logs.push({ date, top: entrySel.top, bottom: entrySel.bottom, jacket: entrySel.jacket, rating: entrySel.rating, feltTemp });
+  logs.push({ date, top: entrySel.top, bottom: entrySel.bottom, jacket: entrySel.jacket, rating: entrySel.rating, feltTemp, updatedAt: Date.now() });
   saveLS('wearcast_logs', logs);
   closeEntrySheet();
   renderAll();
   toast('Gespeichert! WearCast lernt mit. ✨');
+  doSync();
 }
 
 function deleteLog(date) {
   logs = logs.filter(l => l.date !== date);
+  logs.push({ date, deleted: true, updatedAt: Date.now() });
   saveLS('wearcast_logs', logs);
   renderAll();
+  doSync();
 }
 
 /* ───────────────────────── Standort ───────────────────────── */
@@ -674,6 +718,131 @@ document.getElementById('locSearch').addEventListener('input', e => {
   }, 350);
 });
 
+/* ───────────────────────── Cloud-Sync & Backup ───────────────────────── */
+const SYNC_BASE = 'https://gymtrack-25d39-default-rtdb.europe-west1.firebasedatabase.app/wearcast/';
+
+// Pro Datum gewinnt der Eintrag mit dem neueren Zeitstempel (inkl. Tombstones)
+function mergeLogs(a, b) {
+  const m = new Map();
+  for (const l of [...a, ...b]) {
+    if (!l || !l.date) continue;
+    const prev = m.get(l.date);
+    if (!prev || (l.updatedAt || 0) > (prev.updatedAt || 0)) m.set(l.date, l);
+  }
+  return [...m.values()].sort((x, y) => x.date.localeCompare(y.date));
+}
+
+let syncing = false;
+async function doSync(verbose = false) {
+  if (!sync || syncing) return;
+  syncing = true;
+  try {
+    const url = SYNC_BASE + sync.code + '.json';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'denied' : 'http');
+    const remote = await r.json();
+    logs = mergeLogs(logs, (remote && remote.logs) || []);
+    saveLS('wearcast_logs', logs);
+    const w = await fetch(url, { method: 'PUT', body: JSON.stringify({ logs, updatedAt: Date.now() }) });
+    if (!w.ok) throw new Error(w.status === 401 || w.status === 403 ? 'denied' : 'http');
+    sync.lastSync = Date.now();
+    saveLS('wearcast_sync', sync);
+    renderAll();
+    if (verbose) toast('Cloud-Sync erfolgreich ☁️');
+  } catch (e) {
+    if (verbose) toast(e.message === 'denied'
+      ? 'Sync abgelehnt — Cloud-Freischaltung fehlt noch'
+      : navigator.onLine === false
+        ? 'Offline — Sync folgt bei Verbindung'
+        : 'Sync fehlgeschlagen — Cloud nicht erreichbar');
+  } finally {
+    syncing = false;
+  }
+}
+
+function newSyncCode() {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const buf = new Uint8Array(12);
+  crypto.getRandomValues(buf);
+  const s = [...buf].map(b => abc[b % abc.length]).join('');
+  return s.slice(0,4) + '-' + s.slice(4,8) + '-' + s.slice(8,12);
+}
+
+function enableSync() {
+  sync = { code: newSyncCode(), lastSync: null };
+  saveLS('wearcast_sync', sync);
+  renderHistory();
+  doSync(true);
+}
+
+function disableSync() {
+  sync = null;
+  localStorage.removeItem('wearcast_sync');
+  renderHistory();
+  toast('Sync getrennt — Daten bleiben lokal erhalten');
+}
+
+function copySyncCode() {
+  if (!sync) return;
+  (navigator.clipboard ? navigator.clipboard.writeText(sync.code) : Promise.reject())
+    .then(() => toast('Code kopiert 📋'))
+    .catch(() => toast(sync.code));
+}
+
+function openSyncSheet() {
+  document.getElementById('syncSheetBg').classList.add('open');
+  document.getElementById('syncCodeInput').value = '';
+}
+function closeSyncSheet() { document.getElementById('syncSheetBg').classList.remove('open'); }
+
+function connectSync() {
+  const code = document.getElementById('syncCodeInput').value.trim().toLowerCase();
+  if (!/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/.test(code)) { toast('Code-Format: xxxx-xxxx-xxxx'); return; }
+  sync = { code, lastSync: null };
+  saveLS('wearcast_sync', sync);
+  closeSyncSheet();
+  renderHistory();
+  doSync(true);
+}
+
+function exportData() {
+  const data = { app: 'wearcast', version: 1, exportedAt: new Date().toISOString(), location: location_, logs };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wearcast-backup-' + todayStr() + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Backup exportiert ⬇️');
+}
+
+document.getElementById('importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.app !== 'wearcast' || !Array.isArray(data.logs)) throw new Error('format');
+      const before = activeLogs().length;
+      logs = mergeLogs(logs, data.logs);
+      saveLS('wearcast_logs', logs);
+      if (!location_ && data.location) {
+        location_ = data.location;
+        saveLS('wearcast_location', location_);
+        document.getElementById('locName').textContent = location_.name;
+        fetchWeather(true);
+      }
+      renderAll();
+      const added = activeLogs().length - before;
+      toast(added > 0 ? added + ' Einträge importiert ⬆️' : 'Backup eingelesen — alles schon vorhanden');
+      doSync();
+    } catch { toast('Datei ist kein WearCast-Backup'); }
+  };
+  reader.readAsText(file);
+});
+
 /* ───────────────────────── Navigation ───────────────────────── */
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
@@ -690,6 +859,7 @@ function toast(msg) {
 
 /* ───────────────────────── Init ───────────────────────── */
 renderHistory();
+doSync();
 if (location_) {
   document.getElementById('locName').textContent = location_.name;
   fetchWeather();

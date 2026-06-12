@@ -1,4 +1,4 @@
-const CACHE = 'wearcast-v20260612';
+const CACHE = 'wearcast-v20260612b';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
